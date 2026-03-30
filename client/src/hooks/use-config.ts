@@ -1,6 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
 
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
+
+const DEMO_CONFIG = {
+  id: "demo",
+  riskTolerance: 6,
+  maxSlippageBps: 100,
+  maxMovesPerDay: 5,
+  circuitBreakerPct: 10,
+  gasBudgetUsdPerDay: 20,
+  rebalanceThresholdPct: 2,
+  isPaused: false,
+  pauseReason: null,
+  evmAddress: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  solanaAddress: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  bittensorAddress: "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty",
+  onboardedAt: new Date().toISOString(),
+};
+
 interface Config {
   id: string;
   riskTolerance: number;
@@ -20,8 +38,11 @@ interface Config {
 export function useConfig() {
   return useQuery({
     queryKey: ["config"],
-    queryFn: () => api.get<Config>("/config"),
-    refetchInterval: 30_000,
+    queryFn: async () => {
+      if (DEMO_MODE) return DEMO_CONFIG as Config;
+      return api.get<Config>("/config");
+    },
+    refetchInterval: DEMO_MODE ? false : 30_000,
   });
 }
 

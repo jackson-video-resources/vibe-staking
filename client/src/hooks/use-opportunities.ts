@@ -1,5 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
+import { DEMO_OPPORTUNITIES } from "../lib/demo-data.js";
+
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
 interface Opportunity {
   id: string;
@@ -21,7 +24,10 @@ interface Opportunity {
 export function useOpportunities() {
   return useQuery({
     queryKey: ["opportunities"],
-    queryFn: () => api.get<Opportunity[]>("/opportunities"),
-    refetchInterval: 60_000,
+    queryFn: async () => {
+      if (DEMO_MODE) return DEMO_OPPORTUNITIES as Opportunity[];
+      return api.get<Opportunity[]>("/opportunities");
+    },
+    refetchInterval: DEMO_MODE ? false : 60_000,
   });
 }

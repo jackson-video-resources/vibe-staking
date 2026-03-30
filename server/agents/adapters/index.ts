@@ -40,6 +40,8 @@ import { compoundV3Adapter } from "./compound-v3.js";
 import { marinadeAdapter } from "./marinade.js";
 import { jitoAdapter } from "./jito.js";
 import { taoDelegate } from "./tao-delegate.js";
+import { moonwellAdapter } from "./moonwell.js";
+import { fluidAdapter } from "./fluid.js";
 
 registerAdapter(aaveV3Adapter);
 registerAdapter(lidoAdapter);
@@ -47,3 +49,5 @@ registerAdapter(compoundV3Adapter);
 registerAdapter(marinadeAdapter);
 registerAdapter(jitoAdapter);
 registerAdapter(taoDelegate);
+registerAdapter(moonwellAdapter);
+registerAdapter(fluidAdapter);

@@ -15,9 +15,12 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    proxy: {
-      "/api": "http://localhost:3000",
-    },
+    proxy:
+      process.env.VITE_DEMO_MODE === "true"
+        ? {}
+        : {
+            "/api": "http://localhost:3000",
+          },
   },
   css: {
     postcss: {

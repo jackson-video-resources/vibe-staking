@@ -62,6 +62,8 @@ export const EXECUTABLE_PROTOCOLS = new Set([
   "marinade-finance",
   "jito",
   "bittensor-staking",
+  "moonwell",
+  "fluid",
 ]);
 
 // EVM token addresses for common tokens per chain

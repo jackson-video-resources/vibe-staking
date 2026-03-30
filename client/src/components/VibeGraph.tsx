@@ -9,7 +9,7 @@ const STATUS_COLORS: Record<string, number> = {
   active: 0x22c55e,
   evaluating: 0xeab308,
   exiting: 0xef4444,
-  idle: 0x475569,
+  idle: 0x334155,
   chain: 0x6366f1,
 };
 
@@ -23,11 +23,14 @@ export default function VibeGraph() {
     return buildGraphData(portfolio.positions ?? [], opps ?? []);
   }, [portfolio, opps]);
 
-  // Auto-rotate camera
+  // Pull camera back far enough to see the full cloud
   useEffect(() => {
     if (!graphRef.current) return;
-    graphRef.current.cameraPosition({ x: 0, y: 0, z: 300 });
-  }, []);
+    const timer = setTimeout(() => {
+      graphRef.current?.cameraPosition({ x: 0, y: 0, z: 600 });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [graphData]);
 
   if (!portfolio && !opps) {
     return (
@@ -43,27 +46,49 @@ export default function VibeGraph() {
         ref={graphRef}
         graphData={graphData}
         backgroundColor="#0f172a"
+        // Node rendering — chain anchors are large, protocols are small dots
         nodeThreeObject={(node: any) => {
-          const size = node.val ?? 5;
-          const geometry = new THREE.SphereGeometry(size, 16, 16);
+          const isChain = node.type === "chain";
+          const size = isChain ? 18 : Math.max(1.5, node.val ?? 3);
+          const geometry = new THREE.SphereGeometry(
+            size,
+            isChain ? 32 : 8,
+            isChain ? 32 : 8,
+          );
           const color = STATUS_COLORS[node.status] ?? STATUS_COLORS.idle;
           const material = new THREE.MeshPhongMaterial({
             color,
             transparent: true,
-            opacity: node.type === "chain" ? 0.9 : 0.75,
-            shininess: 80,
+            opacity: isChain ? 1.0 : node.status === "active" ? 0.95 : 0.6,
+            shininess: isChain ? 120 : 40,
+            emissive:
+              node.status === "active"
+                ? new THREE.Color(0x22c55e)
+                : new THREE.Color(0x000000),
+            emissiveIntensity: node.status === "active" ? 0.3 : 0,
           });
           const mesh = new THREE.Mesh(geometry, material);
 
-          // Add glow for active positions
+          // Glow shell for active positions
           if (node.status === "active") {
-            const glowGeom = new THREE.SphereGeometry(size * 1.4, 16, 16);
+            const glowGeom = new THREE.SphereGeometry(size * 2.2, 16, 16);
             const glowMat = new THREE.MeshBasicMaterial({
               color: 0x22c55e,
               transparent: true,
-              opacity: 0.12,
+              opacity: 0.08,
             });
             mesh.add(new THREE.Mesh(glowGeom, glowMat));
+          }
+
+          // Extra outer glow for chain anchors
+          if (isChain) {
+            const outerGeom = new THREE.SphereGeometry(size * 2.8, 16, 16);
+            const outerMat = new THREE.MeshBasicMaterial({
+              color: 0x6366f1,
+              transparent: true,
+              opacity: 0.06,
+            });
+            mesh.add(new THREE.Mesh(outerGeom, outerMat));
           }
 
           return mesh;
@@ -71,32 +96,45 @@ export default function VibeGraph() {
         nodeLabel={(node: any) =>
           `${node.name}${node.apy ? ` — ${node.apy.toFixed(1)}% APY` : ""}`
         }
-        // The "pollination" particle effect — capital flowing between nodes
-        linkDirectionalParticles={3}
-        linkDirectionalParticleSpeed={0.004}
-        linkDirectionalParticleWidth={1.5}
+        // Dense particle streams — the "pollination" capital-flowing effect
+        linkDirectionalParticles={(link: any) => {
+          // More particles on high-value links
+          return link.value > 10 ? 12 : link.value > 3 ? 8 : 4;
+        }}
+        linkDirectionalParticleSpeed={0.003}
+        linkDirectionalParticleWidth={(link: any) => (link.value > 5 ? 2 : 1)}
         linkDirectionalParticleColor={(link: any) =>
-          link.value > 5 ? "#22c55e" : "#6366f1"
+          link.type === "active"
+            ? "#22c55e"
+            : link.type === "cross"
+              ? "#a855f7"
+              : "#6366f1"
         }
-        linkOpacity={0.2}
-        linkWidth={0.5}
-        linkColor={() => "#334155"}
+        linkOpacity={0.15}
+        linkWidth={(link: any) => (link.value > 5 ? 1.5 : 0.3)}
+        linkColor={(link: any) =>
+          link.type === "active" ? "#22c55e" : "#1e293b"
+        }
         onNodeClick={(node: any) => {
           if (graphRef.current) {
-            const distance = 80;
-            const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+            const distance = 100;
+            const distRatio =
+              1 + distance / Math.hypot(node.x ?? 1, node.y ?? 1, node.z ?? 1);
             graphRef.current.cameraPosition(
               {
-                x: node.x * distRatio,
-                y: node.y * distRatio,
-                z: node.z * distRatio,
+                x: (node.x ?? 0) * distRatio,
+                y: (node.y ?? 0) * distRatio,
+                z: (node.z ?? 0) * distRatio,
               },
               node,
-              1000,
+              1200,
             );
           }
         }}
         enableNodeDrag={false}
+        d3AlphaDecay={0.008}
+        d3VelocityDecay={0.25}
+        warmupTicks={80}
       />
 
       {/* Legend */}
