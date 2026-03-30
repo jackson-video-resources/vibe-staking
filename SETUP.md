@@ -27,7 +27,10 @@ Based on the answers:
 
 Then:
 1. Run `npm install` in ~/vibe-staking/
-2. Generate an ENCRYPTION_KEY: run `openssl rand -hex 32` and store it
+2. Generate secret keys:
+   - ENCRYPTION_KEY: run `openssl rand -hex 32`
+   - ADMIN_KEY: run `openssl rand -hex 16` (protects dashboard settings)
+   Set VITE_ADMIN_KEY to the same value as ADMIN_KEY — it's baked into the frontend build.
 3. Create a .env file with all the values we discussed
 4. Run `npm run db:push` to set up the database (they may need to create a Railway PostgreSQL first — guide them if needed)
 5. Start the server locally with `npm run dev` and confirm it's running at localhost:3000
