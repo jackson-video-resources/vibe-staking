@@ -2,7 +2,7 @@
 
 AI-powered DeFi yield optimizer. Runs autonomously 24/7 — scans DeFiLlama every 15 minutes, uses Claude to decide when to rebalance, and executes moves automatically across Ethereum, Arbitrum, Base, Solana, and Bittensor.
 
-**Full tutorial**: [YouTube — Vibe Staking: Build an AI Yield Optimizer](https://youtube.com/@jacksonvideos)
+**Full tutorial**: [YouTube — Vibe Staking: Build an AI Yield Optimizer](https://youtube.com/watch?v=PLACEHOLDER)
 
 ---
 
@@ -25,7 +25,7 @@ Claude is called only when a move is actually worth it — typically 2–6 times
 
 ## One-shot setup
 
-Paste the prompt from **SETUP.md** into Claude Code. It will:
+Paste the prompt from **[SETUP.md](https://github.com/jackson-video-resources/vibe-staking/blob/main/SETUP.md)** into Claude Code. It will:
 
 1. Ask 4 questions (capital, risk tolerance, Telegram, Railway account)
 2. Install dependencies and set up your environment
