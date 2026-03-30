@@ -72,16 +72,16 @@ export default function AuditLog() {
   });
 
   return (
-    <div className="p-6">
-      <h1 className="text-lg font-bold text-slate-100 mb-4">Audit Log</h1>
-      <div className="bg-slate-900 rounded-xl border border-slate-700 overflow-hidden">
+    <div className="absolute inset-0 bg-white overflow-auto p-6">
+      <h1 className="text-lg font-bold text-black mb-4">Audit Log</h1>
+      <div className="bg-white rounded-xl border border-black/10 overflow-hidden">
         {isLoading && (
-          <div className="p-8 text-center text-slate-500 text-sm">
+          <div className="p-8 text-center text-black/40 text-sm">
             Loading...
           </div>
         )}
         {entries?.length === 0 && (
-          <div className="p-8 text-center text-slate-500 text-sm">
+          <div className="p-8 text-center text-black/40 text-sm">
             No events yet. The agent will log all decisions here.
           </div>
         )}

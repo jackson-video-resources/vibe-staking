@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { DB } from "../db.js";
 import { config, positions } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
-import type { Move, ScoredOpportunity } from "../../shared/types.js";
+import type { ScoredOpportunity } from "../../shared/types.js";
 import {
   EXECUTABLE_PROTOCOLS,
   SUPPORTED_CHAINS,
@@ -12,9 +12,16 @@ import { executeMove } from "./executor.js";
 
 const anthropic = new Anthropic();
 
+interface TargetSlot {
+  protocol: string;
+  chain: string;
+  pct: number;
+  reasoning: string;
+}
+
 interface ClaudeDecision {
-  moves: Move[];
-  skipReason?: string;
+  targetAllocation: TargetSlot[];
+  skipReason?: string | null;
 }
 
 // Strip characters that could manipulate Claude's reasoning.
@@ -25,6 +32,7 @@ function sanitizePromptString(s: string): string {
 
 function buildDecisionPrompt(
   currentPositions: Array<{
+    id: string;
     protocol: string;
     chain: string;
     apy: number;
@@ -34,17 +42,26 @@ function buildDecisionPrompt(
   portfolioValueUsd: number,
   riskTolerance: number,
   movesRemainingToday: number,
-  rebalanceThresholdPct: number,
 ): string {
+  const currentAllocation = currentPositions.map((p) => ({
+    id: p.id,
+    protocol: sanitizePromptString(p.protocol),
+    chain: sanitizePromptString(p.chain),
+    pct:
+      portfolioValueUsd > 0
+        ? Math.round((p.amountUsd / portfolioValueUsd) * 100)
+        : 0,
+    apy: Number(p.apy.toFixed(4)),
+  }));
+
   return JSON.stringify({
     portfolioSummary: {
       totalValueUsd: portfolioValueUsd,
       riskTolerance,
       movesRemainingToday,
-      rebalanceThresholdPct,
     },
-    currentPositions,
-    topCandidates: candidates.slice(0, 10).map((c) => ({
+    currentAllocation,
+    topCandidates: candidates.slice(0, 15).map((c) => ({
       protocol: sanitizePromptString(c.protocol),
       chain: sanitizePromptString(c.chain),
       symbol: sanitizePromptString(c.symbol),
@@ -60,28 +77,35 @@ function buildDecisionPrompt(
   });
 }
 
-const SYSTEM_PROMPT = `You are a DeFi yield optimization agent. Analyse the current portfolio and top-scoring opportunities, then decide which moves to make.
+const SYSTEM_PROMPT = `You are a DeFi yield optimization agent managing a diversified portfolio across multiple protocols simultaneously.
+
+Your job is to recommend a TARGET ALLOCATION — what percentage of capital should be in each protocol right now.
 
 Rules:
-- Only recommend moves where the improvement is meaningful (above rebalanceThresholdPct)
-- Account for implicit gas costs — small improvements at high gas cost are not worth it
-- Prefer audited, established protocols over new unaudited ones
-- Never recommend more moves than movesRemainingToday
+- Always recommend 3-5 concurrent positions (diversification reduces risk)
+- Allocations must sum to 100%
+- No single position > 40% of portfolio
+- Prefer spreading risk: mix chains (EVM + Solana where capital allows), mix stable vs volatile
+- Only use protocols in the executable list
+- Account for gas costs — small rebalances on Ethereum mainnet are not worth it
+- Stablecoin positions are safer; weight them higher for lower risk tolerance
 - Reward-heavy APY (token emissions) is less reliable than base APY
-- For stablecoin positions, prioritise capital preservation over yield maximisation
+- For micro capital (<$1000): max 2 positions, prefer Arbitrum/Base/Solana (low gas)
 
-Respond ONLY with valid JSON matching this schema:
+Return JSON in this exact shape:
 {
-  "moves": [
-    {
-      "type": "enter" | "exit" | "shift",
-      "fromPositionId": "uuid or null if type=enter",
-      "toOpportunity": { <full ScoredOpportunity object> },
-      "amountUsd": number,
-      "reasoning": "brief explanation"
-    }
+  "targetAllocation": [
+    { "protocol": "aave-v3", "chain": "Arbitrum", "pct": 35, "reasoning": "..." },
+    { "protocol": "morpho", "chain": "Base", "pct": 25, "reasoning": "..." },
+    { "protocol": "jito", "chain": "Solana", "pct": 40, "reasoning": "..." }
   ],
-  "skipReason": "optional string if no moves recommended"
+  "skipReason": null
+}
+
+Or if no rebalance needed:
+{
+  "targetAllocation": [],
+  "skipReason": "Current allocation is within 2% of optimal. No action needed."
 }`;
 
 export async function runPortfolioDecision(
@@ -144,6 +168,7 @@ export async function runPortfolioDecision(
   // Call Claude
   const prompt = buildDecisionPrompt(
     activePositions.map((p) => ({
+      id: p.id,
       protocol: p.protocol,
       chain: p.chain,
       apy: p.currentApy ?? p.entryApy,
@@ -153,7 +178,6 @@ export async function runPortfolioDecision(
     portfolioValueUsd,
     cfg.riskTolerance,
     movesRemainingToday,
-    cfg.rebalanceThresholdPct,
   );
 
   let decision: ClaudeDecision;
@@ -189,83 +213,197 @@ export async function runPortfolioDecision(
     return;
   }
 
-  if (decision.skipReason || !decision.moves || decision.moves.length === 0) {
+  if (
+    decision.skipReason ||
+    !decision.targetAllocation ||
+    decision.targetAllocation.length === 0
+  ) {
     await auditAction(
       db,
       "portfolio-manager",
       "no-action",
-      decision.skipReason ?? "Claude returned no moves",
+      decision.skipReason ?? "Claude returned no target allocation",
       {},
       tokensUsed,
     );
     return;
   }
 
-  // Validate and execute each move — strict schema checks before any execution
-  for (const move of decision.moves) {
-    const validTypes = ["enter", "exit", "shift"] as const;
-    if (
-      !move.type ||
-      !validTypes.includes(move.type as (typeof validTypes)[number])
-    ) {
-      console.warn(
-        "[portfolio-manager] Invalid move type, skipping:",
-        move.type,
-      );
+  // Validate target allocation slots
+  const validSlots: TargetSlot[] = [];
+  let pctTotal = 0;
+
+  for (const slot of decision.targetAllocation) {
+    if (!slot.protocol || typeof slot.protocol !== "string") {
+      console.warn("[portfolio-manager] Slot missing protocol, skipping");
       continue;
     }
-    if (!move.toOpportunity || typeof move.toOpportunity !== "object") {
-      console.warn("[portfolio-manager] Missing toOpportunity, skipping");
-      continue;
-    }
-    if (!EXECUTABLE_PROTOCOLS.has(move.toOpportunity.protocol)) {
+    if (!EXECUTABLE_PROTOCOLS.has(slot.protocol)) {
       console.warn(
         "[portfolio-manager] Protocol not in whitelist:",
-        move.toOpportunity.protocol,
+        slot.protocol,
       );
       continue;
     }
     if (
       !SUPPORTED_CHAINS.includes(
-        move.toOpportunity.chain as (typeof SUPPORTED_CHAINS)[number],
+        slot.chain as (typeof SUPPORTED_CHAINS)[number],
       )
     ) {
-      console.warn(
-        "[portfolio-manager] Chain not supported:",
-        move.toOpportunity.chain,
-      );
+      console.warn("[portfolio-manager] Chain not supported:", slot.chain);
       continue;
     }
-    if (!Number.isFinite(move.amountUsd) || move.amountUsd <= 0) {
-      console.warn(
-        "[portfolio-manager] Invalid amountUsd, skipping:",
-        move.amountUsd,
-      );
+    if (!Number.isFinite(slot.pct) || slot.pct <= 0 || slot.pct > 100) {
+      console.warn("[portfolio-manager] Invalid pct, skipping:", slot.pct);
       continue;
     }
-    // Cap move size to total portfolio value as a sanity check
-    if (move.amountUsd > portfolioValueUsd * 1.1) {
-      console.warn(
-        "[portfolio-manager] Move amount exceeds portfolio value, skipping:",
-        move.amountUsd,
-      );
-      continue;
-    }
+    validSlots.push(slot);
+    pctTotal += slot.pct;
+  }
 
+  if (validSlots.length === 0) {
+    await auditAction(
+      db,
+      "portfolio-manager",
+      "no-action",
+      "All target slots failed validation",
+      {},
+      tokensUsed,
+    );
+    return;
+  }
+
+  // Compute delta: current positions vs target allocation
+  // Key: "protocol:chain"
+  const currentMap = new Map(
+    activePositions.map((p) => [`${p.protocol}:${p.chain}`, p]),
+  );
+  const targetMap = new Map(
+    validSlots.map((s) => [`${s.protocol}:${s.chain}`, s]),
+  );
+
+  // Build moves: exits first, then entries/adjustments
+  const movesToExecute: Array<{
+    type: "enter" | "exit" | "shift";
+    fromPositionId: string | null;
+    toOpportunity: ScoredOpportunity | null;
+    amountUsd: number;
+    reasoning: string;
+  }> = [];
+
+  // Exit positions not in target
+  for (const [key, pos] of currentMap) {
+    if (!targetMap.has(key)) {
+      movesToExecute.push({
+        type: "exit",
+        fromPositionId: pos.id,
+        toOpportunity: null,
+        amountUsd: pos.amountUsd,
+        reasoning: `Exiting ${pos.protocol} on ${pos.chain} — not in target allocation`,
+      });
+    }
+  }
+
+  // Enter/adjust positions in target
+  for (const [key, slot] of targetMap) {
+    const targetUsd =
+      portfolioValueUsd > 0 ? (slot.pct / pctTotal) * portfolioValueUsd : 0;
+    const existing = currentMap.get(key);
+
+    // Find the opportunity in candidates
+    const opportunity = executableCandidates.find(
+      (c) => c.protocol === slot.protocol && c.chain === slot.chain,
+    ) ?? {
+      protocol: slot.protocol,
+      chain: slot.chain,
+      symbol: "",
+      apy: 0,
+      tvlUsd: 0,
+      riskScore: 5,
+      vibeScore: 5,
+      stablecoin: false,
+      ilRisk: null,
+      apyMean30d: null,
+      poolId: "",
+    };
+
+    if (!existing) {
+      // New entry
+      if (targetUsd <= 0) continue;
+      if (!Number.isFinite(targetUsd) || targetUsd > portfolioValueUsd * 1.1) {
+        console.warn(
+          "[portfolio-manager] Target amount out of range, skipping:",
+          targetUsd,
+        );
+        continue;
+      }
+      movesToExecute.push({
+        type: "enter",
+        fromPositionId: null,
+        toOpportunity: opportunity as ScoredOpportunity,
+        amountUsd: targetUsd,
+        reasoning: slot.reasoning,
+      });
+    } else {
+      // Adjust existing — only if delta is meaningful (>5% of portfolio)
+      const delta = targetUsd - existing.amountUsd;
+      if (Math.abs(delta) / portfolioValueUsd > 0.05) {
+        movesToExecute.push({
+          type: "shift",
+          fromPositionId: existing.id,
+          toOpportunity: opportunity as ScoredOpportunity,
+          amountUsd: targetUsd,
+          reasoning: `Adjusting ${slot.protocol} on ${slot.chain}: ${existing.amountUsd.toFixed(0)} → ${targetUsd.toFixed(0)} USD`,
+        });
+      }
+    }
+  }
+
+  if (movesToExecute.length === 0) {
+    await auditAction(
+      db,
+      "portfolio-manager",
+      "no-action",
+      "Target allocation matches current within tolerance — no moves needed",
+      {},
+      tokensUsed,
+    );
+    return;
+  }
+
+  // Execute exits first, then entries/shifts
+  const exits = movesToExecute.filter((m) => m.type === "exit");
+  const entries = movesToExecute.filter((m) => m.type !== "exit");
+
+  for (const move of [...exits, ...entries]) {
     await auditAction(
       db,
       "portfolio-manager",
       "move-decided",
-      `${move.type}: ${move.toOpportunity.protocol} on ${move.toOpportunity.chain} — ${move.reasoning}`,
+      `${move.type}: ${move.toOpportunity?.protocol ?? move.fromPositionId} — ${move.reasoning}`,
       { move },
       tokensUsed,
     );
 
-    await executeMove(db, move).catch(async (err) => {
-      await auditAction(db, "executor", "move-failed", `Move failed: ${err}`, {
-        move,
-        error: String(err),
-      });
-    });
+    // Build a Move-compatible object for the executor
+    const execMove = {
+      type: move.type,
+      fromPositionId: move.fromPositionId,
+      toOpportunity: move.toOpportunity,
+      amountUsd: move.amountUsd,
+      reasoning: move.reasoning,
+    };
+
+    await executeMove(db, execMove as Parameters<typeof executeMove>[1]).catch(
+      async (err) => {
+        await auditAction(
+          db,
+          "executor",
+          "move-failed",
+          `Move failed: ${err}`,
+          { move, error: String(err) },
+        );
+      },
+    );
   }
 }
