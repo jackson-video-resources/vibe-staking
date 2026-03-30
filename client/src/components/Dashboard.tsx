@@ -16,8 +16,154 @@ const PROTOCOLS = [
   "Bittensor",
 ];
 
-function abbrev(name: string) {
-  return name.slice(0, 3).toUpperCase();
+const S = {
+  root: {
+    position: "relative" as const,
+    width: "100%",
+    height: "100%",
+    overflow: "hidden",
+    background: "#fff",
+  },
+  graphLayer: {
+    position: "absolute" as const,
+    inset: 0,
+  },
+  topBar: {
+    position: "absolute" as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "44px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0 16px",
+    background: "rgba(255,255,255,0.88)",
+    backdropFilter: "blur(8px)",
+    borderBottom: "1px solid rgba(0,0,0,0.08)",
+    zIndex: 20,
+  },
+  logo: {
+    fontSize: "11px",
+    fontFamily: "monospace",
+    fontWeight: "bold",
+    letterSpacing: "0.2em",
+    color: "#000",
+  },
+  navRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  navBtn: (active: boolean) => ({
+    width: "28px",
+    height: "28px",
+    borderRadius: "50%",
+    border: active ? "1px solid #000" : "1px solid rgba(0,0,0,0.2)",
+    background: active ? "#000" : "#fff",
+    color: active ? "#fff" : "#000",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "9px",
+    fontFamily: "monospace",
+    fontWeight: "bold",
+    cursor: "pointer",
+    textDecoration: "none",
+  }),
+  pausedBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    marginRight: "12px",
+  },
+  pausedDot: {
+    width: "8px",
+    height: "8px",
+    borderRadius: "50%",
+    background: "#ef4444",
+  },
+  pausedText: {
+    fontSize: "10px",
+    fontFamily: "monospace",
+    color: "#dc2626",
+    fontWeight: "bold",
+  },
+  bottomBar: {
+    position: "absolute" as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "52px",
+    display: "flex",
+    alignItems: "center",
+    background: "rgba(255,255,255,0.92)",
+    backdropFilter: "blur(8px)",
+    borderTop: "1px solid rgba(0,0,0,0.08)",
+    zIndex: 20,
+  },
+  statCell: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRight: "1px solid rgba(0,0,0,0.08)",
+    padding: "0 8px",
+  },
+  statLabel: {
+    fontSize: "9px",
+    fontFamily: "monospace",
+    color: "rgba(0,0,0,0.4)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+  },
+  statValue: {
+    fontSize: "12px",
+    fontFamily: "monospace",
+    fontWeight: "bold",
+    color: "#000",
+  },
+  leftPanel: {
+    position: "absolute" as const,
+    left: 0,
+    top: "44px",
+    bottom: "52px",
+    width: "48px",
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: "6px",
+    padding: "10px 0",
+    overflowY: "auto" as const,
+    zIndex: 20,
+  },
+  protoBtn: (active: boolean) => ({
+    width: "32px",
+    height: "32px",
+    borderRadius: "50%",
+    border: active ? "1px solid #000" : "1px solid rgba(0,0,0,0.1)",
+    background: active ? "#000" : "#fff",
+    color: active ? "#fff" : "rgba(0,0,0,0.35)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "8px",
+    fontFamily: "monospace",
+    fontWeight: "bold",
+    flexShrink: 0,
+    cursor: "default",
+    title: "",
+  }),
+};
+
+function StatCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={S.statCell}>
+      <span style={S.statLabel}>{label}</span>
+      <span style={S.statValue}>{value}</span>
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -35,104 +181,64 @@ export default function Dashboard() {
   const positionCount = portfolio?.positionCount ?? 0;
   const gasToday = portfolio?.totalGasSpentUsd ?? 0;
 
-  const navBtn = (href: string, label: string) => {
-    const active = loc === href;
-    return (
-      <Link href={href}>
-        <a
-          className={`w-7 h-7 rounded-full border flex items-center justify-center text-[9px] font-mono font-bold transition-colors ${
-            active
-              ? "bg-black text-white border-black"
-              : "bg-white text-black border-black/20 hover:border-black/50"
-          }`}
-          title={label}
-        >
-          {label.slice(0, 1)}
-        </a>
-      </Link>
-    );
-  };
-
   return (
-    <div className="relative w-full h-full overflow-hidden bg-white">
+    <div style={S.root}>
       {/* Graph — fills entire viewport */}
-      <div className="absolute inset-0">
+      <div style={S.graphLayer}>
         <VibeGraph />
       </div>
 
       {/* Top bar */}
-      <div className="absolute top-0 left-0 right-0 h-10 flex items-center justify-between px-4 bg-white/80 backdrop-blur-sm border-b border-black/10 z-10">
-        <span className="text-xs font-mono font-bold text-black tracking-widest">
-          ◆ VIBE STAKING
-        </span>
-        <div className="flex items-center gap-2">
+      <div style={S.topBar}>
+        <span style={S.logo}>◆ VIBE STAKING</span>
+        <div style={S.navRow}>
           {config?.isPaused && (
-            <div className="flex items-center gap-1 mr-3">
-              <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-              <span className="text-[10px] font-mono text-red-600 font-bold">
-                PAUSED
-              </span>
+            <div style={S.pausedBadge}>
+              <span style={S.pausedDot} />
+              <span style={S.pausedText}>PAUSED</span>
             </div>
           )}
-          {navBtn("/", "Dashboard")}
-          {navBtn("/audit", "Audit")}
-          {navBtn("/settings", "Settings")}
+          <Link href="/">
+            <a style={S.navBtn(loc === "/")} title="Dashboard">
+              D
+            </a>
+          </Link>
+          <Link href="/audit">
+            <a style={S.navBtn(loc === "/audit")} title="Audit">
+              A
+            </a>
+          </Link>
+          <Link href="/settings">
+            <a style={S.navBtn(loc === "/settings")} title="Settings">
+              S
+            </a>
+          </Link>
         </div>
       </div>
 
       {/* Bottom stats bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-12 bg-white/90 backdrop-blur-sm border-t border-black/10 flex items-center z-10">
-        {portfolio?.isOnboarded === false ? (
-          <div className="w-full text-center text-xs text-black/50 font-mono">
-            Send funds to get started
-          </div>
-        ) : (
-          <div className="flex items-center divide-x divide-black/10 w-full">
-            <StatCell
-              label="Total Value"
-              value={`$${totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            />
-            <StatCell label="APY" value={`${apy.toFixed(1)}%`} />
-            <StatCell
-              label="Yield Earned"
-              value={`$${yieldEarned.toFixed(2)}`}
-            />
-            <StatCell label="Positions" value={String(positionCount)} />
-            <StatCell label="Gas Today" value={`$${gasToday.toFixed(2)}`} />
-          </div>
-        )}
+      <div style={S.bottomBar}>
+        <StatCell
+          label="Total Value"
+          value={`$${totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        />
+        <StatCell label="APY" value={`${apy.toFixed(1)}%`} />
+        <StatCell label="Yield Earned" value={`$${yieldEarned.toFixed(2)}`} />
+        <StatCell label="Positions" value={String(positionCount)} />
+        <StatCell label="Gas Today" value={`$${gasToday.toFixed(2)}`} />
       </div>
 
       {/* Left protocol panel */}
-      <div className="absolute left-0 top-10 bottom-12 w-12 flex flex-col items-center gap-1.5 py-3 overflow-y-auto z-10">
+      <div style={S.leftPanel}>
         {PROTOCOLS.map((proto) => {
           const isActive = activeProtocols.has(proto.toLowerCase());
           return (
-            <div
-              key={proto}
-              title={proto}
-              className={`w-8 h-8 rounded-full border flex items-center justify-center text-[9px] font-mono font-bold transition-colors flex-shrink-0 ${
-                isActive
-                  ? "bg-black text-white border-black"
-                  : "bg-white text-black/40 border-black/10"
-              }`}
-            >
-              {abbrev(proto)}
+            <div key={proto} title={proto} style={S.protoBtn(isActive)}>
+              {proto.slice(0, 3).toUpperCase()}
             </div>
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function StatCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center px-3">
-      <span className="text-[9px] text-black/40 font-mono uppercase tracking-wider">
-        {label}
-      </span>
-      <span className="text-xs font-bold text-black font-mono">{value}</span>
     </div>
   );
 }
