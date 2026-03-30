@@ -103,11 +103,12 @@ export interface GraphNode {
   chain?: string;
   apy?: number;
   tvl?: number;
-  status: "active" | "evaluating" | "exiting" | "idle";
+  status: "active" | "evaluating" | "exiting" | "idle" | "chain";
 }
 
 export interface GraphLink {
   source: string;
   target: string;
   value: number;
+  type?: "active" | "opportunity" | "cross";
 }

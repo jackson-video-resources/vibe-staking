@@ -1,4 +1,3 @@
-import { GRAPH_COLORS } from "@shared/constants.js";
 import type { GraphNode, GraphLink } from "@shared/types.js";
 
 interface Position {
@@ -19,16 +18,16 @@ interface Opportunity {
   executable: boolean;
 }
 
-const CHAIN_IDS = [
+const CHAIN_LIST = [
   "Ethereum",
   "Arbitrum",
   "Base",
-  "Optimism",
   "Solana",
   "Bittensor",
+  "Optimism",
   "Polygon",
-  "BSC",
   "Avalanche",
+  "BSC",
 ];
 
 export function buildGraphData(
@@ -39,86 +38,91 @@ export function buildGraphData(
   const links: GraphLink[] = [];
   const nodeMap = new Map<string, boolean>();
 
-  // Add chain anchor nodes
+  // Collect active chains
   const activeChains = new Set([
     ...positions.map((p) => p.chain),
-    ...opportunities
-      .filter((o) => o.vibeScore && o.vibeScore > 50)
-      .map((o) => o.chain),
+    ...opportunities.filter((o) => (o.vibeScore ?? 0) > 40).map((o) => o.chain),
   ]);
 
+  // Chain anchor nodes — large black spheres
   for (const chain of activeChains) {
     const id = `chain:${chain}`;
     if (!nodeMap.has(id)) {
       nodes.push({
         id,
         name: chain,
-        val: 20,
-        color: GRAPH_COLORS.chain,
+        val: 22,
         type: "chain",
         chain,
-        status: "idle",
+        status: "chain",
+        color: "#0a0a0a",
       });
       nodeMap.set(id, true);
     }
   }
 
-  // Add active position nodes
+  // Active position nodes — medium, green
   for (const pos of positions) {
     const id = `pos:${pos.protocol}:${pos.chain}`;
     if (!nodeMap.has(id)) {
       nodes.push({
         id,
         name: pos.protocol,
-        val: Math.max(5, Math.sqrt(pos.amountUsd) / 5),
-        color:
-          pos.status === "exiting" ? GRAPH_COLORS.exiting : GRAPH_COLORS.active,
+        val: Math.max(4, Math.sqrt(pos.amountUsd) / 8),
         type: "protocol",
         chain: pos.chain,
         apy: pos.currentApy ?? pos.entryApy,
         status: pos.status === "exiting" ? "exiting" : "active",
+        color: "#16a34a",
       });
       nodeMap.set(id, true);
-
-      // Link to chain
       links.push({
         source: `chain:${pos.chain}`,
         target: id,
         value: pos.amountUsd / 1000,
+        type: "active",
       });
     }
   }
 
-  // Add top opportunity nodes (not already active positions)
-  const activeProtocols = new Set(
+  // Opportunity nodes — varied sizes, black, orbiting their chain anchors
+  const activeProtos = new Set(
     positions.map((p) => `${p.protocol}:${p.chain}`),
   );
-  const topOpps = opportunities
-    .filter((o) => o.executable && o.vibeScore && o.vibeScore > 60)
-    .filter((o) => !activeProtocols.has(`${o.protocol}:${o.chain}`))
-    .slice(0, 15);
+  const opps = opportunities
+    .filter((o) => !activeProtos.has(`${o.protocol}:${o.chain}`))
+    .slice(0, 250); // cap for performance
 
-  for (const opp of topOpps) {
-    const id = `opp:${opp.protocol}:${opp.chain}`;
-    if (!nodeMap.has(id)) {
+  for (let i = 0; i < opps.length; i++) {
+    const opp = opps[i];
+    const id = `opp:${opp.protocol}:${opp.chain}:${i}`;
+    if (!nodeMap.has(id) && nodeMap.has(`chain:${opp.chain}`)) {
+      // Size varies: TVL-based with a long tail of tiny dots — creates the orbital cloud
+      const logTvl = Math.log10(Math.max(opp.tvlUsd, 1));
+      const size =
+        opp.tvlUsd > 500_000_000
+          ? logTvl * 1.4 // large protocol
+          : opp.tvlUsd > 50_000_000
+            ? logTvl * 0.8 // medium
+            : Math.random() * 1.5 + 0.4; // tiny satellite dot
+
       nodes.push({
         id,
         name: opp.protocol,
-        val: Math.max(3, Math.log10(opp.tvlUsd) * 2),
-        color: GRAPH_COLORS.evaluating,
+        val: size,
         type: "protocol",
         chain: opp.chain,
         apy: opp.apy,
-        tvl: opp.tvlUsd,
         status: "evaluating",
+        color: "#111111",
       });
       nodeMap.set(id, true);
-
-      // Link to chain
-      const chainId = `chain:${opp.chain}`;
-      if (nodeMap.has(chainId)) {
-        links.push({ source: chainId, target: id, value: 1 });
-      }
+      links.push({
+        source: `chain:${opp.chain}`,
+        target: id,
+        value: 1,
+        type: "opportunity",
+      });
     }
   }
 

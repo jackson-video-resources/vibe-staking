@@ -42,6 +42,8 @@ import { jitoAdapter } from "./jito.js";
 import { taoDelegate } from "./tao-delegate.js";
 import { moonwellAdapter } from "./moonwell.js";
 import { fluidAdapter } from "./fluid.js";
+import { morphoAdapter } from "./morpho.js";
+import { eulerAdapter } from "./euler.js";
 
 registerAdapter(aaveV3Adapter);
 registerAdapter(lidoAdapter);
@@ -51,3 +53,5 @@ registerAdapter(jitoAdapter);
 registerAdapter(taoDelegate);
 registerAdapter(moonwellAdapter);
 registerAdapter(fluidAdapter);
+registerAdapter(morphoAdapter);
+registerAdapter(eulerAdapter);

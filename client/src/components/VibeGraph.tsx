@@ -5,36 +5,48 @@ import { buildGraphData } from "../lib/graph-data.js";
 import { usePortfolio } from "../hooks/use-portfolio.js";
 import { useOpportunities } from "../hooks/use-opportunities.js";
 
-const STATUS_COLORS: Record<string, number> = {
-  active: 0x22c55e,
-  evaluating: 0xeab308,
-  exiting: 0xef4444,
-  idle: 0x334155,
-  chain: 0x6366f1,
-};
-
 export default function VibeGraph() {
   const { data: portfolio } = usePortfolio();
   const { data: opps } = useOpportunities();
   const graphRef = useRef<any>(null);
+  const animRef = useRef<number>(0);
 
   const graphData = useMemo(() => {
     if (!portfolio || !opps) return { nodes: [], links: [] };
     return buildGraphData(portfolio.positions ?? [], opps ?? []);
   }, [portfolio, opps]);
 
-  // Pull camera back far enough to see the full cloud
+  // Slow continuous camera orbit — the "always moving" Giza effect
   useEffect(() => {
-    if (!graphRef.current) return;
-    const timer = setTimeout(() => {
-      graphRef.current?.cameraPosition({ x: 0, y: 0, z: 600 });
-    }, 300);
-    return () => clearTimeout(timer);
+    if (!graphRef.current || graphData.nodes.length === 0) return;
+
+    const RADIUS = 650;
+    const ELEVATION = 80;
+    let angle = 0;
+
+    // Let the force simulation settle a bit first
+    const startDelay = setTimeout(() => {
+      const rotate = () => {
+        angle += 0.0008; // very slow — full rotation ~2 minutes
+        graphRef.current?.cameraPosition({
+          x: RADIUS * Math.sin(angle),
+          y: ELEVATION,
+          z: RADIUS * Math.cos(angle),
+        });
+        animRef.current = requestAnimationFrame(rotate);
+      };
+      animRef.current = requestAnimationFrame(rotate);
+    }, 2000);
+
+    return () => {
+      clearTimeout(startDelay);
+      cancelAnimationFrame(animRef.current);
+    };
   }, [graphData]);
 
   if (!portfolio && !opps) {
     return (
-      <div className="flex items-center justify-center h-full text-slate-500 text-sm">
+      <div className="flex items-center justify-center h-full text-slate-400 text-sm">
         Waiting for data...
       </div>
     );
@@ -45,50 +57,51 @@ export default function VibeGraph() {
       <ForceGraph3D
         ref={graphRef}
         graphData={graphData}
-        backgroundColor="#0f172a"
-        // Node rendering — chain anchors are large, protocols are small dots
+        backgroundColor="#ffffff"
+        // Each node is a sphere — size and colour carry all the meaning
         nodeThreeObject={(node: any) => {
           const isChain = node.type === "chain";
-          const size = isChain ? 18 : Math.max(1.5, node.val ?? 3);
-          const geometry = new THREE.SphereGeometry(
-            size,
-            isChain ? 32 : 8,
-            isChain ? 32 : 8,
-          );
-          const color = STATUS_COLORS[node.status] ?? STATUS_COLORS.idle;
-          const material = new THREE.MeshPhongMaterial({
-            color,
-            transparent: true,
-            opacity: isChain ? 1.0 : node.status === "active" ? 0.95 : 0.6,
-            shininess: isChain ? 120 : 40,
-            emissive:
-              node.status === "active"
-                ? new THREE.Color(0x22c55e)
-                : new THREE.Color(0x000000),
-            emissiveIntensity: node.status === "active" ? 0.3 : 0,
-          });
-          const mesh = new THREE.Mesh(geometry, material);
+          const isActive = node.status === "active";
+          const size = node.val ?? 1;
 
-          // Glow shell for active positions
-          if (node.status === "active") {
-            const glowGeom = new THREE.SphereGeometry(size * 2.2, 16, 16);
-            const glowMat = new THREE.MeshBasicMaterial({
-              color: 0x22c55e,
-              transparent: true,
-              opacity: 0.08,
-            });
-            mesh.add(new THREE.Mesh(glowGeom, glowMat));
+          const geo = new THREE.SphereGeometry(
+            size,
+            isChain ? 32 : 6,
+            isChain ? 32 : 6,
+          );
+          const color = isActive ? 0x16a34a : 0x0d0d0d;
+          const mat = new THREE.MeshPhongMaterial({
+            color,
+            shininess: isChain ? 15 : 5,
+          });
+          const mesh = new THREE.Mesh(geo, mat);
+
+          // Faint halo around chain anchors — the diffuse cloud boundary
+          if (isChain) {
+            mesh.add(
+              new THREE.Mesh(
+                new THREE.SphereGeometry(size * 4, 12, 12),
+                new THREE.MeshBasicMaterial({
+                  color: 0xbbbbbb,
+                  transparent: true,
+                  opacity: 0.05,
+                }),
+              ),
+            );
           }
 
-          // Extra outer glow for chain anchors
-          if (isChain) {
-            const outerGeom = new THREE.SphereGeometry(size * 2.8, 16, 16);
-            const outerMat = new THREE.MeshBasicMaterial({
-              color: 0x6366f1,
-              transparent: true,
-              opacity: 0.06,
-            });
-            mesh.add(new THREE.Mesh(outerGeom, outerMat));
+          // Green glow ring for active positions
+          if (isActive) {
+            mesh.add(
+              new THREE.Mesh(
+                new THREE.SphereGeometry(size * 3, 12, 12),
+                new THREE.MeshBasicMaterial({
+                  color: 0x16a34a,
+                  transparent: true,
+                  opacity: 0.12,
+                }),
+              ),
+            );
           }
 
           return mesh;
@@ -96,64 +109,49 @@ export default function VibeGraph() {
         nodeLabel={(node: any) =>
           `${node.name}${node.apy ? ` — ${node.apy.toFixed(1)}% APY` : ""}`
         }
-        // Dense particle streams — the "pollination" capital-flowing effect
-        linkDirectionalParticles={(link: any) => {
-          // More particles on high-value links
-          return link.value > 10 ? 12 : link.value > 3 ? 8 : 4;
-        }}
-        linkDirectionalParticleSpeed={0.003}
-        linkDirectionalParticleWidth={(link: any) => (link.value > 5 ? 2 : 1)}
-        linkDirectionalParticleColor={(link: any) =>
-          link.type === "active"
-            ? "#22c55e"
-            : link.type === "cross"
-              ? "#a855f7"
-              : "#6366f1"
-        }
-        linkOpacity={0.15}
-        linkWidth={(link: any) => (link.value > 5 ? 1.5 : 0.3)}
-        linkColor={(link: any) =>
-          link.type === "active" ? "#22c55e" : "#1e293b"
-        }
+        // Thin grey lines between anchors and orbiting nodes
+        linkOpacity={0.12}
+        linkWidth={0.2}
+        linkColor={() => "#999999"}
+        // No directional particles — the orbital cloud IS the visual
+        linkDirectionalParticles={0}
         onNodeClick={(node: any) => {
           if (graphRef.current) {
-            const distance = 100;
-            const distRatio =
-              1 + distance / Math.hypot(node.x ?? 1, node.y ?? 1, node.z ?? 1);
+            const dist = 80;
+            const r =
+              1 + dist / Math.hypot(node.x ?? 1, node.y ?? 1, node.z ?? 1);
             graphRef.current.cameraPosition(
               {
-                x: (node.x ?? 0) * distRatio,
-                y: (node.y ?? 0) * distRatio,
-                z: (node.z ?? 0) * distRatio,
+                x: (node.x ?? 0) * r,
+                y: (node.y ?? 0) * r,
+                z: (node.z ?? 0) * r,
               },
               node,
-              1200,
+              1000,
             );
           }
         }}
         enableNodeDrag={false}
-        d3AlphaDecay={0.008}
+        // Never fully settle — keeps the cloud gently breathing
+        d3AlphaDecay={0.003}
         d3VelocityDecay={0.25}
-        warmupTicks={80}
+        warmupTicks={120}
+        cooldownTicks={Infinity}
       />
 
       {/* Legend */}
-      <div className="absolute bottom-4 left-4 flex flex-col gap-1 text-xs text-slate-400">
+      <div className="absolute bottom-4 left-4 flex flex-col gap-1 text-xs text-slate-500">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />{" "}
+          <span className="w-2 h-2 rounded-full bg-green-600 inline-block" />{" "}
           Active position
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" />{" "}
+          <span className="w-2 h-2 rounded-full bg-slate-800 inline-block" />{" "}
           Being evaluated
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />{" "}
-          Exiting
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />{" "}
-          Chain anchor
+          <span className="w-2 h-2 rounded-full bg-black inline-block" /> Chain
+          anchor
         </div>
       </div>
     </div>

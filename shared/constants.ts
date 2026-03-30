@@ -57,13 +57,15 @@ export const CAPITAL_TIERS = {
 // Protocol slugs we have execution adapters for
 export const EXECUTABLE_PROTOCOLS = new Set([
   "aave-v3",
-  "lido",
   "compound-v3",
+  "lido",
+  "morpho",
+  "fluid",
+  "moonwell",
+  "euler",
   "marinade-finance",
   "jito",
   "bittensor-staking",
-  "moonwell",
-  "fluid",
 ]);
 
 // EVM token addresses for common tokens per chain
