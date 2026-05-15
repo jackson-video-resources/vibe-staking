@@ -18,7 +18,7 @@ First, have a short conversation with me to understand my setup. Ask me these qu
 1. "How much capital are you planning to put in? (This helps me set the right strategy — $100, $1K, $10K, $100K+)"
 2. "What's your risk tolerance on a scale of 1-10? (1 = conservative — stablecoins and battle-tested protocols only. 10 = aggressive — chase the highest APY wherever it is.)"
 3. "Do you already have a Telegram bot set up? If yes, share your TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID. If not, I'll guide you to create one — it takes 2 minutes."
-4. "Do you have a Railway account? (railway.app — free tier works fine). If yes, are you already logged in via the CLI?"
+4. "Do you have a Hostinger VPS? (the cheapest KVM plan at https://hostinger.com/lewisjackson10 is plenty). If yes, share the server IP + root password so I can deploy there."
 
 Based on the answers:
 - If capital < $500: set RISK_TOLERANCE to max(answer, 3), note they should stick to L2s/Solana to avoid ETH gas eating returns
@@ -32,12 +32,12 @@ Then:
    - ADMIN_KEY: run `openssl rand -hex 16` (protects dashboard settings)
    Set VITE_ADMIN_KEY to the same value as ADMIN_KEY — it's baked into the frontend build.
 3. Create a .env file with all the values we discussed
-4. Run `npm run db:push` to set up the database (they may need to create a Railway PostgreSQL first — guide them if needed)
+4. Run `npm run db:push` to set up the database (they'll need PostgreSQL — locally for dev, and on the VPS for production; guide them if needed)
 5. Start the server locally with `npm run dev` and confirm it's running at localhost:3000
 6. Call the wallet generation endpoint or run the onboarding script to generate EVM + Solana + Bittensor wallets
 7. Display the wallet addresses clearly with instructions: "Send your crypto to these addresses to get started. The agent will detect the deposit and begin optimizing automatically."
 8. Show the dashboard URL: http://localhost:5173
-9. For Railway deployment: run `railway up -d` and confirm the deployment URL
+9. For production: deploy to the Hostinger VPS — SSH in, clone the repo, `docker build -t vibe-staking .`, `docker run -d --restart=always --env-file .env -p 3000:3000 -p 5173:5173 vibe-staking`, then confirm it's reachable at the VPS IP
 
 Throughout: be conversational, explain what each step does in plain English. This is meant for someone who may be new to DeFi automation but is technically capable.
 

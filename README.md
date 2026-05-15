@@ -27,12 +27,12 @@ Claude is called only when a move is actually worth it — typically 2–6 times
 
 Paste the prompt from **[SETUP.md](https://github.com/jackson-video-resources/vibe-staking/blob/main/SETUP.md)** into Claude Code. It will:
 
-1. Ask 4 questions (capital, risk tolerance, Telegram, Railway account)
+1. Ask 4 questions (capital, risk tolerance, Telegram, Hostinger VPS)
 2. Install dependencies and set up your environment
 3. Generate fresh EVM + Solana + Bittensor wallets
-4. Push schema to your Railway PostgreSQL database
+4. Push schema to your PostgreSQL database
 5. Start the server and show you the dashboard
-6. Deploy to Railway
+6. Deploy to your Hostinger VPS
 
 That's it. Send funds to the generated addresses and the agent starts working.
 
@@ -61,7 +61,7 @@ npm run dev
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string (Railway auto-sets this) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string (point at the Postgres on your VPS) |
 | `ENCRYPTION_KEY` | Yes | 64-char hex: `openssl rand -hex 32` |
 | `ANTHROPIC_API_KEY` | Yes | For Claude portfolio decisions |
 | `ADMIN_KEY` | Yes | Protects config writes: `openssl rand -hex 16` |
@@ -76,7 +76,7 @@ npm run dev
 
 The 3D dashboard shows capital flow as an animated graph — chain nodes orbit each other, active positions glow green, and particle streams show funds moving between protocols.
 
-Access at `http://localhost:5173` in dev, or your Railway URL in production.
+Access at `http://localhost:5173` in dev, or your VPS IP/domain in production.
 
 ---
 
@@ -97,7 +97,7 @@ Adding more: create `server/agents/adapters/{protocol}.ts`, add to `EXECUTABLE_P
 
 ## Security
 
-- Private keys encrypted with AES-256-GCM at rest. `ENCRYPTION_KEY` lives only in Railway env vars.
+- Private keys encrypted with AES-256-GCM at rest. `ENCRYPTION_KEY` lives only in the environment on your VPS, never in the repo.
 - Keys decrypted only at signing time — never cached in memory.
 - Token approvals are exact amounts only, revoked to zero after each transaction.
 - Max 1% slippage on all swaps (configurable).
@@ -109,13 +109,20 @@ Adding more: create `server/agents/adapters/{protocol}.ts`, add to `EXECUTABLE_P
 
 ---
 
-## Deploy to Railway
+## Deploy to a Hostinger VPS
+
+Run it 24/7 on a Hostinger VPS — the cheapest KVM plan (~$5/mo) is plenty: **https://hostinger.com/lewisjackson10**
 
 ```bash
-railway up -d
+ssh root@YOUR_VPS_IP
+apt update && apt install -y docker.io git
+git clone <your-repo-url> vibe-staking && cd vibe-staking
+cp .env.example .env          # fill in DATABASE_URL, ENCRYPTION_KEY, etc.
+docker build -t vibe-staking .
+docker run -d --restart=always --env-file .env -p 3000:3000 -p 5173:5173 vibe-staking
 ```
 
-Railway detects the `Dockerfile` and builds automatically. Set all env vars in the Railway dashboard.
+`--restart=always` keeps it running through crashes and reboots. Point `DATABASE_URL` at a Postgres instance on the VPS (install `postgresql`, or run a `postgres` container).
 
 ---
 

@@ -9,7 +9,7 @@ AI-powered yield optimizer that runs autonomously 24/7. Three cron agents (Yield
 - **Database**: PostgreSQL + Drizzle ORM
 - **AI**: `@anthropic-ai/sdk` (claude-sonnet-4-6) for portfolio decisions
 - **Chains**: EVM (Ethereum/Arbitrum/Base/etc via viem + LI.FI), Solana (@solana/web3.js), Bittensor (@polkadot/api)
-- **Deploy**: Railway (Dockerfile)
+- **Deploy**: Hostinger VPS (Docker)
 
 ## Key directories
 - `server/agents/` — the three AI agents + protocol adapters
@@ -28,13 +28,15 @@ npm run typecheck # TypeScript check
 ```
 
 ## Deploy
+Hostinger VPS (https://hostinger.com/lewisjackson10) — SSH in, then:
 ```bash
-railway up -d
+docker build -t vibe-staking .
+docker run -d --restart=always --env-file .env -p 3000:3000 -p 5173:5173 vibe-staking
 ```
 
 ## Environment variables required
 See `.env.example`. Key vars:
-- `DATABASE_URL` — Railway PostgreSQL (auto-set)
+- `DATABASE_URL` — PostgreSQL connection string (Postgres on the VPS)
 - `ENCRYPTION_KEY` — 64-char hex: `openssl rand -hex 32`
 - `ANTHROPIC_API_KEY` — for portfolio decision agent
 - `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` — optional but recommended
